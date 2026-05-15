@@ -103,32 +103,32 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
       {
         title: "Switch Profile",
         value: "switch",
-        description: "Activate a saved OpenAI account profile",
+        description: "Use saved profile",
       },
       {
         title: "Save Current Profile",
         value: "save",
-        description: "Save the currently active OpenAI account",
+        description: "Save active account",
       },
       {
         title: "Rename Profile",
         value: "rename",
-        description: "Rename a saved OpenAI account profile",
+        description: "Edit profile name",
       },
       {
         title: "Login to OpenAI",
         value: "login",
-        description: "Start OpenCode's ChatGPT Pro/Plus browser login",
+        description: "Add another account",
       },
       {
         title: "Show Active Account",
         value: "show-active",
-        description: "Show the active OpenAI account ID",
+        description: "Current account ID",
       },
       {
         title: "Open Profiles Folder",
         value: "open-folder",
-        description: "Open the local folder containing saved profiles",
+        description: "Saved profile files",
       },
     ];
 
@@ -184,7 +184,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
         options: savedProfiles.map((profile) => ({
           title: profile.name,
           value: profile,
-          description: formatAccountIdDescription(profile.accountId),
+          description: formatTuiAccountIdDescription(profile.accountId),
         })),
         onSelect: (option) => {
           api.ui.dialog.clear();
@@ -232,7 +232,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
         options: savedProfiles.map((profile) => ({
           title: profile.name,
           value: profile,
-          description: formatAccountIdDescription(profile.accountId),
+          description: formatTuiAccountIdDescription(profile.accountId),
         })),
         onSelect: (option) => {
           showRenameProfilePrompt(option.value);
@@ -309,7 +309,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
           };
 
           if (method.label === OPENAI_HEADLESS_LOGIN_METHOD_LABEL) {
-            option.description = "Use this if browser login reuses the wrong account";
+            option.description = "For account mixups";
           }
 
           return option;
@@ -471,6 +471,18 @@ void _typecheckTuiPlugin;
 
 function formatAccountIdDescription(accountId: string | undefined): string {
   return accountId ? `Account ID: ${accountId}` : "Account ID unavailable";
+}
+
+function formatTuiAccountIdDescription(accountId: string | undefined): string {
+  if (!accountId) {
+    return "ID unavailable";
+  }
+
+  if (accountId.length <= 18) {
+    return `ID: ${accountId}`;
+  }
+
+  return `ID: ${accountId.slice(0, 8)}...${accountId.slice(-6)}`;
 }
 
 async function getSavedProfileDescription(paths: ReturnType<typeof getOpenCodeAuthPaths>, accountId: string | undefined): Promise<string> {
