@@ -38,7 +38,7 @@
     "@opencode-ai/plugin": ">=1.14.33"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.14.50",
+    "@opencode-ai/plugin": "^1.15.0",
     "@types/node": "^24.10.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"

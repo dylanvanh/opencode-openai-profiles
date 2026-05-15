@@ -6,7 +6,7 @@ OpenCode has one active `openai` auth slot. This plugin saves named copies of th
 
 ## Status
 
-Early local-first plugin. Restart OpenCode after switching profiles.
+Early local-first plugin. Profile switches apply live when your OpenCode version supports runtime auth updates.
 
 ## Install
 
@@ -93,7 +93,7 @@ CLI fallback:
 /openai-account-cli login headless
 ```
 
-Restart OpenCode, then save the new active account:
+If OpenCode prompts you to restart after login, restart it before saving the new active account:
 
 ```text
 /openai-profiles
@@ -109,14 +109,14 @@ Switch profiles:
 
 Choose `Switch Profile`, then select a saved profile.
 
+If OpenCode cannot apply the switch live, the plugin will tell you to restart.
+
 CLI fallback:
 
 ```text
 /openai-account-cli switch account-1
 /openai-account-cli switch account-2
 ```
-
-Restart OpenCode after switching.
 
 ## Storage
 

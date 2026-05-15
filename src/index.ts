@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { TuiDialogSelectOption, TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui";
-import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@opencode-ai/sdk/v2";
+import type { Auth, ProviderAuthAuthorization, ProviderAuthMethod } from "@opencode-ai/sdk/v2";
 import {
   authFileExists,
   getActiveOpenAIProfile,
@@ -41,6 +41,8 @@ type ProviderOauthAuthorizeParameters = {
   method: number;
 };
 type ProviderOauthAuthorizeResult = { data?: ProviderAuthAuthorization; error?: unknown };
+type AuthSetParameters = { providerID: string; auth?: Auth };
+type AuthSetResult = { data?: boolean; error?: unknown };
 type ServerToastVariant = "info" | "success" | "warning" | "error";
 type ServerToastParameters = {
   directory?: string;
@@ -65,6 +67,9 @@ type TuiCommandLayerCommand = {
 };
 type TuiCommandLayerBinding = { key: string; cmd: string; desc?: string };
 type ServerProviderClient = {
+  auth?: {
+    set(parameters: AuthSetParameters): Promise<AuthSetResult>;
+  };
   provider: {
     auth(parameters?: ProviderDirectoryParameters): Promise<ProviderAuthResult>;
     oauth: {
@@ -86,6 +91,7 @@ type TuiCommandLayer = {
 };
 
 type TuiCommandLayerApi = TuiPluginApi & {
+  client: TuiPluginApi["client"] & ServerProviderClient;
   keymap?: {
     registerLayer?: (layer: TuiCommandLayer) => () => void;
   };
@@ -129,6 +135,19 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
 
   function showError(error: unknown): void {
     showToast("error", error instanceof Error ? error.message : "Unknown error");
+  }
+
+  async function applyActiveOpenAIProfile(profile: Auth): Promise<boolean> {
+    if (!api.client.auth) {
+      return false;
+    }
+
+    const authSetResult = await api.client.auth.set({
+      providerID: OPENAI_PROVIDER_ID,
+      auth: profile,
+    });
+
+    return !authSetResult.error && authSetResult.data === true;
   }
 
   async function runSafely(action: () => Promise<void>): Promise<void> {
@@ -231,7 +250,11 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
           api.ui.dialog.clear();
           void runSafely(async () => {
             const switchedProfile = await switchActiveOpenAIProfile(paths, option.value.name);
-            showToast("success", `Switched to ${switchedProfile.name}. ${RESTART_MESSAGE}`);
+            const activeProfile = await getActiveOpenAIProfile(paths);
+            const didApplyActiveProfile = await applyActiveOpenAIProfile(activeProfile);
+            const message = didApplyActiveProfile ? "" : ` ${RESTART_MESSAGE}`;
+
+            showToast("success", `Switched to ${switchedProfile.name}.${message}`);
           });
         },
       }),
@@ -592,8 +615,12 @@ async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: str
         throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} switch <name>`);
       }
 
+      const client = ctx.client as unknown as ServerProviderClient;
       const switchedProfile = await switchActiveOpenAIProfile(paths, argument);
-      const message = `Switched to ${switchedProfile.name}. ${RESTART_MESSAGE}`;
+      const activeProfile = await getActiveOpenAIProfile(paths);
+      const didApplyActiveProfile = await applyServerActiveOpenAIProfile(client, activeProfile);
+      const switchMessage = didApplyActiveProfile ? "" : ` ${RESTART_MESSAGE}`;
+      const message = `Switched to ${switchedProfile.name}.${switchMessage}`;
       await showServerToast(ctx, "success", message);
       return message;
     }
@@ -680,6 +707,19 @@ async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreferen
   const message = savedProfile ? `Saved current profile as ${savedProfile.name} before login. ${loginMessage}` : loginMessage;
   await showServerToast(ctx, "info", message);
   return message;
+}
+
+async function applyServerActiveOpenAIProfile(client: ServerProviderClient, profile: Auth): Promise<boolean> {
+  if (!client.auth) {
+    return false;
+  }
+
+  const authSetResult = await client.auth.set({
+    providerID: OPENAI_PROVIDER_ID,
+    auth: profile,
+  });
+
+  return !authSetResult.error && authSetResult.data === true;
 }
 
 async function showServerToast(
