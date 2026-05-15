@@ -24,8 +24,8 @@ import {
 import { getOpenCodeAuthPaths, OPENAI_PROVIDER_ID } from "./paths.js";
 
 const PLUGIN_ID = "opencode-openai-profiles";
-const TUI_COMMAND_NAME = "openai-account.open";
-const COMMAND_NAME = "openai-account";
+const TUI_COMMAND_NAME = "openai-profiles.open";
+const COMMAND_NAME = "openai-profiles";
 const COMMAND_ALIAS = "oa";
 const FALLBACK_COMMAND_NAME = "openai-account-cli";
 const RESTART_MESSAGE = "Restart opencode for the change to take effect.";

@@ -46,7 +46,7 @@ For OpenCode versions with external TUI plugin targets, add the TUI target:
 Open the account picker:
 
 ```text
-/openai-account
+/openai-profiles
 ```
 
 Short alias:
@@ -71,7 +71,7 @@ If the TUI target is unavailable, use the CLI fallback:
 Save your current OpenAI account:
 
 ```text
-/openai-account
+/openai-profiles
 ```
 
 Choose `Save Current Profile`, then enter `account-1` or another name.
@@ -81,7 +81,7 @@ If you skip this step, the plugin saves the active unsaved account as `account-1
 Log in to another account:
 
 ```text
-/openai-account
+/openai-profiles
 ```
 
 Choose `Login to OpenAI`. Select `ChatGPT Pro/Plus (headless)` if you want to paste the final callback URL by hand.
@@ -96,7 +96,7 @@ CLI fallback:
 Restart OpenCode, then save the new active account:
 
 ```text
-/openai-account
+/openai-profiles
 ```
 
 Choose `Save Current Profile`, then enter `account-2` or another name.
@@ -104,7 +104,7 @@ Choose `Save Current Profile`, then enter `account-2` or another name.
 Switch profiles:
 
 ```text
-/openai-account
+/openai-profiles
 ```
 
 Choose `Switch Profile`, then select a saved profile.
