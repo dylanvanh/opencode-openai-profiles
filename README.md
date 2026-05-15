@@ -10,22 +10,9 @@ Early local-first plugin. Profile switches apply live when your OpenCode version
 
 ## Install
 
-Build from this repo:
+Package: [opencode-openai-profiles](https://www.npmjs.com/package/opencode-openai-profiles)
 
-```bash
-pnpm install
-pnpm build
-```
-
-Install the local plugin:
-
-```bash
-opencode plugin "$PWD" --global --force
-```
-
-The command adds the package to OpenCode's server and TUI plugin configs when OpenCode exposes both targets.
-
-After publishing, add the package to your OpenCode config:
+Add the package to your OpenCode config:
 
 ```json
 {
@@ -40,6 +27,21 @@ For OpenCode versions with external TUI plugin targets, add the TUI target:
   "plugin": ["opencode-openai-profiles/tui"]
 }
 ```
+
+For local development, build from this repo:
+
+```bash
+pnpm install
+pnpm build
+```
+
+Install the local plugin:
+
+```bash
+opencode plugin "$PWD" --global --force
+```
+
+The command adds the package to OpenCode's server and TUI plugin configs when OpenCode exposes both targets.
 
 ## Usage
 
