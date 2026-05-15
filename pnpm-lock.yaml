@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@opencode-ai/sdk':
+        specifier: ^1.15.0
+        version: 1.15.0
     devDependencies:
       '@opencode-ai/plugin':
         specifier: ^1.14.50
@@ -87,6 +91,9 @@ packages:
 
   '@opencode-ai/sdk@1.14.50':
     resolution: {integrity: sha512-IrTKTFviR4Tj+u0BI8h8XgXIvEpxwkkHqBj6E0aEc4DBErpS3qh2Lkp1xt0OdtCYiLE3wZ1bAIiHOiO66H/7TA==}
+
+  '@opencode-ai/sdk@1.15.0':
+    resolution: {integrity: sha512-npmURKwd1HoV/i3CsGl2tdHpGhWSGVqTN1cp0s2gDH5gE6XduAtFmmVXBZ/ovJLh3Evu6sTVZ9n0IkJzFNeveQ==}
 
   '@oxc-project/types@0.129.0':
     resolution: {integrity: sha512-3oz8m3FGdr2nDXVqmFUw7jolKliC4MoyXYIG2c7gpjBnzUWQpUGIYcXYKxTdTi+N2jusvt610ckTMkxdwHkYEg==}
@@ -633,6 +640,10 @@ snapshots:
       zod: 4.1.8
 
   '@opencode-ai/sdk@1.14.50':
+    dependencies:
+      cross-spawn: 7.0.6
+
+  '@opencode-ai/sdk@1.15.0':
     dependencies:
       cross-spawn: 7.0.6
 

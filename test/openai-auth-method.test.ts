@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
+import type { ProviderAuthMethod } from "@opencode-ai/sdk/v2";
 import {
   findOpenAIAuthMethodIndex,
   OPENAI_BROWSER_LOGIN_METHOD_LABEL,
   OPENAI_HEADLESS_LOGIN_METHOD_LABEL,
   parseOpenAIAuthMethodPreference,
-  type OpenAIAuthMethod,
 } from "../src/openai-auth-method.js";
 
 describe("openai-auth-method", () => {
@@ -33,9 +33,9 @@ describe("openai-auth-method", () => {
 
   test("should find the requested OpenAI auth method index", () => {
     // given
-    const OPENAI_AUTH_METHODS: OpenAIAuthMethod[] = [
-      { label: OPENAI_BROWSER_LOGIN_METHOD_LABEL },
-      { label: OPENAI_HEADLESS_LOGIN_METHOD_LABEL },
+    const OPENAI_AUTH_METHODS: ProviderAuthMethod[] = [
+      { type: "oauth", label: OPENAI_BROWSER_LOGIN_METHOD_LABEL },
+      { type: "oauth", label: OPENAI_HEADLESS_LOGIN_METHOD_LABEL },
     ];
     const METHOD_PREFERENCE = "headless";
 
@@ -49,7 +49,7 @@ describe("openai-auth-method", () => {
 
   test("should return undefined when requested OpenAI auth method is unavailable", () => {
     // given
-    const OPENAI_AUTH_METHODS: OpenAIAuthMethod[] = [{ label: OPENAI_BROWSER_LOGIN_METHOD_LABEL }];
+    const OPENAI_AUTH_METHODS: ProviderAuthMethod[] = [{ type: "oauth", label: OPENAI_BROWSER_LOGIN_METHOD_LABEL }];
     const METHOD_PREFERENCE = "headless";
 
     // when

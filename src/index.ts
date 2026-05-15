@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { TuiDialogSelectOption, TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui";
+import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@opencode-ai/sdk/v2";
 import {
   authFileExists,
   getActiveOpenAIProfile,
@@ -19,7 +20,6 @@ import {
   OPENAI_BROWSER_LOGIN_METHOD_LABEL,
   OPENAI_HEADLESS_LOGIN_METHOD_LABEL,
   parseOpenAIAuthMethodPreference,
-  type OpenAIAuthMethod,
 } from "./openai-auth-method.js";
 import { getOpenCodeAuthPaths, OPENAI_PROVIDER_ID } from "./paths.js";
 
@@ -33,16 +33,15 @@ const OPENAI_ACCOUNT_TOAST_TITLE = "OpenAI Account";
 
 type MainAction = "switch" | "save" | "rename" | "login" | "show-active" | "open-folder";
 type SelectedOpenAIAuthMethod = { index: number; label: string };
-type OpenAIAuthAuthorization = { url: string; method: "auto" | "code"; instructions: string };
 type ServerProviderClient = {
   provider: {
-    auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, OpenAIAuthMethod[]>; error?: unknown }>;
+    auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, ProviderAuthMethod[]>; error?: unknown }>;
     oauth: {
       authorize(parameters: {
         providerID: string;
         directory?: string;
         method: number;
-      }): Promise<{ data?: OpenAIAuthAuthorization; error?: unknown }>;
+      }): Promise<{ data?: ProviderAuthAuthorization; error?: unknown }>;
     };
   };
 };
@@ -436,7 +435,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     await showSaveProfileDialog();
   }
 
-  function showHeadlessLoginInstructions(methodLabel: string, authorization: OpenAIAuthAuthorization): void {
+  function showHeadlessLoginInstructions(methodLabel: string, authorization: ProviderAuthAuthorization): void {
     api.ui.dialog.replace(() =>
       api.ui.DialogAlert({
         title: methodLabel,

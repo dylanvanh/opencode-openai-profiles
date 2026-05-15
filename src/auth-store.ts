@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { access, chmod, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import type { OAuth } from "@opencode-ai/sdk/v2";
 import { getProfileFileName, OPENAI_PROVIDER_ID, PROFILE_FILE_EXTENSION, PROFILE_FILE_PREFIX, type OpenCodeAuthPaths } from "./paths.js";
 import { parseProfileName } from "./profile-name.js";
 
@@ -9,15 +10,7 @@ const SECRET_FILE_MODE = 0o600;
 const SECRET_DIRECTORY_MODE = 0o700;
 const JSON_INDENT_SPACES = 2;
 
-export type OpenAIAuthProfile = {
-  type: "oauth";
-  refresh: string;
-  access: string;
-  expires: number;
-  accountId?: string;
-  enterpriseUrl?: string;
-  [key: string]: unknown;
-};
+export type OpenAIAuthProfile = OAuth;
 
 export type AuthJson = Record<string, unknown> & {
   openai?: unknown;

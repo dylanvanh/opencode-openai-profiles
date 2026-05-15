@@ -1,3 +1,5 @@
+import type { ProviderAuthMethod } from "@opencode-ai/sdk/v2";
+
 export const OPENAI_BROWSER_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (browser)";
 export const OPENAI_HEADLESS_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (headless)";
 
@@ -5,7 +7,6 @@ const OPENAI_BROWSER_METHOD_PREFERENCE = "browser";
 const OPENAI_HEADLESS_METHOD_PREFERENCE = "headless";
 const NOT_FOUND_INDEX = -1;
 
-export type OpenAIAuthMethod = { label: string };
 export type OpenAIAuthMethodPreference =
   | typeof OPENAI_BROWSER_METHOD_PREFERENCE
   | typeof OPENAI_HEADLESS_METHOD_PREFERENCE;
@@ -25,7 +26,7 @@ export function parseOpenAIAuthMethodPreference(methodPreference: string | undef
 }
 
 export function findOpenAIAuthMethodIndex(
-  openAIAuthMethods: OpenAIAuthMethod[],
+  openAIAuthMethods: ProviderAuthMethod[],
   methodPreference: OpenAIAuthMethodPreference,
 ): number | undefined {
   const preferredMethodLabel = getOpenAIAuthMethodLabel(methodPreference);
