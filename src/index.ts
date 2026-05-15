@@ -33,45 +33,56 @@ const OPENAI_ACCOUNT_TOAST_TITLE = "OpenAI Account";
 
 type MainAction = "switch" | "save" | "rename" | "login" | "show-active" | "open-folder";
 type SelectedOpenAIAuthMethod = { index: number; label: string };
+type ProviderDirectoryParameters = { directory?: string };
+type ProviderAuthResult = { data?: Record<string, ProviderAuthMethod[]>; error?: unknown };
+type ProviderOauthAuthorizeParameters = {
+  providerID: string;
+  directory?: string;
+  method: number;
+};
+type ProviderOauthAuthorizeResult = { data?: ProviderAuthAuthorization; error?: unknown };
+type ServerToastVariant = "info" | "success" | "warning" | "error";
+type ServerToastParameters = {
+  directory?: string;
+  title?: string;
+  message?: string;
+  variant?: ServerToastVariant;
+};
+type ServerLogLevel = "debug" | "info" | "error" | "warn";
+type ServerLogParameters = { level?: ServerLogLevel; message?: string };
+type TuiCommandLayerSlash = { name: string; aliases?: string[] };
+type TuiCommandLayerCommand = {
+  name: string;
+  title: string;
+  desc?: string;
+  description?: string;
+  category?: string;
+  namespace: "palette";
+  slashName?: string;
+  slashAliases?: string[];
+  slash?: TuiCommandLayerSlash;
+  run: () => void | Promise<void>;
+};
+type TuiCommandLayerBinding = { key: string; cmd: string; desc?: string };
 type ServerProviderClient = {
   provider: {
-    auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, ProviderAuthMethod[]>; error?: unknown }>;
+    auth(parameters?: ProviderDirectoryParameters): Promise<ProviderAuthResult>;
     oauth: {
-      authorize(parameters: {
-        providerID: string;
-        directory?: string;
-        method: number;
-      }): Promise<{ data?: ProviderAuthAuthorization; error?: unknown }>;
+      authorize(parameters: ProviderOauthAuthorizeParameters): Promise<ProviderOauthAuthorizeResult>;
     };
   };
 };
 type ServerToastClient = {
   tui?: {
-    showToast(parameters?: {
-      directory?: string;
-      title?: string;
-      message?: string;
-      variant?: "info" | "success" | "warning" | "error";
-    }): Promise<unknown>;
+    showToast(parameters?: ServerToastParameters): Promise<unknown>;
   };
   app: {
-    log(parameters?: { level?: "debug" | "info" | "error" | "warn"; message?: string }): Promise<unknown>;
+    log(parameters?: ServerLogParameters): Promise<unknown>;
   };
 };
 type TuiCommandLayer = {
-  commands: Array<{
-    name: string;
-    title: string;
-    desc?: string;
-    description?: string;
-    category?: string;
-    namespace: "palette";
-    slashName?: string;
-    slashAliases?: string[];
-    slash?: { name: string; aliases?: string[] };
-    run: () => void | Promise<void>;
-  }>;
-  bindings?: Array<{ key: string; cmd: string; desc?: string }>;
+  commands: TuiCommandLayerCommand[];
+  bindings?: TuiCommandLayerBinding[];
 };
 
 type TuiCommandLayerApi = TuiPluginApi & {

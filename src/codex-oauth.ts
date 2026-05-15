@@ -20,12 +20,18 @@ type TokenResponse = {
   expires_in?: number;
 };
 
+type IdTokenOrganization = {
+  id: string;
+};
+
+type OpenAIAuthClaims = {
+  chatgpt_account_id?: string;
+};
+
 type IdTokenClaims = {
   chatgpt_account_id?: string;
-  organizations?: Array<{ id: string }>;
-  "https://api.openai.com/auth"?: {
-    chatgpt_account_id?: string;
-  };
+  organizations?: IdTokenOrganization[];
+  "https://api.openai.com/auth"?: OpenAIAuthClaims;
 };
 
 export type ManualCodexLogin = {
