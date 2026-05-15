@@ -279,7 +279,9 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     }
 
     const activeProfile = await getActiveOpenAIProfile(paths);
-    showToast("info", formatAccountIdDescription(activeProfile.accountId));
+    const savedProfileDescription = await getSavedProfileDescription(paths, activeProfile.accountId);
+
+    showToast("info", `${savedProfileDescription}\n${formatAccountIdDescription(activeProfile.accountId)}`);
   }
 
   async function showLoginMethodDialog(): Promise<void> {
@@ -471,6 +473,34 @@ function formatAccountIdDescription(accountId: string | undefined): string {
   return accountId ? `Account ID: ${accountId}` : "Account ID unavailable";
 }
 
+async function getSavedProfileDescription(paths: ReturnType<typeof getOpenCodeAuthPaths>, accountId: string | undefined): Promise<string> {
+  const matchingProfileNames = await getMatchingSavedProfileNames(paths, accountId);
+
+  return formatSavedProfileDescription(matchingProfileNames);
+}
+
+async function getMatchingSavedProfileNames(paths: ReturnType<typeof getOpenCodeAuthPaths>, accountId: string | undefined): Promise<string[]> {
+  if (!accountId) {
+    return [];
+  }
+
+  const savedProfiles = await listOpenAIProfiles(paths);
+
+  return savedProfiles.filter((profile) => profile.accountId === accountId).map((profile) => profile.name);
+}
+
+function formatSavedProfileDescription(profileNames: string[]): string {
+  if (profileNames.length === 0) {
+    return "Saved profile: unsaved";
+  }
+
+  if (profileNames.length === 1) {
+    return `Saved profile: ${profileNames[0]}`;
+  }
+
+  return `Saved profiles: ${profileNames.join(", ")}`;
+}
+
 async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: string): Promise<string> {
   const paths = getOpenCodeAuthPaths();
   const [action, ...actionArguments] = rawArguments.trim().split(/\s+/).filter((argument) => argument.length > 0);
@@ -528,7 +558,8 @@ async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: str
 
     if (action === "active") {
       const activeProfile = await getActiveOpenAIProfile(paths);
-      const message = formatAccountIdDescription(activeProfile.accountId);
+      const savedProfileDescription = await getSavedProfileDescription(paths, activeProfile.accountId);
+      const message = `${savedProfileDescription}\n${formatAccountIdDescription(activeProfile.accountId)}`;
       await showServerToast(ctx, "info", message);
       return message;
     }
