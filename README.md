@@ -62,6 +62,7 @@ Fallback command syntax:
 ```text
 /openai-account-cli save <name>
 /openai-account-cli switch <name>
+/openai-account-cli rename <old> <new>
 /openai-account-cli list
 /openai-account-cli active
 /openai-account-cli login [browser|headless]

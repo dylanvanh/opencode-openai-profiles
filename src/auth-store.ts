@@ -57,6 +57,29 @@ export async function switchActiveOpenAIProfile(paths: OpenCodeAuthPaths, inputP
   return createSavedProfile(profileName, selectedProfile);
 }
 
+export async function renameOpenAIProfile(paths: OpenCodeAuthPaths, inputCurrentName: string, inputNextName: string): Promise<SavedProfile> {
+  const currentName = parseProfileName(inputCurrentName);
+  const nextName = parseProfileName(inputNextName);
+
+  if (currentName === nextName) {
+    throw new Error("Profile names must be different");
+  }
+
+  const currentProfileFilePath = getProfileFilePath(paths, currentName);
+  const nextProfileFilePath = getProfileFilePath(paths, nextName);
+  const profile = await readOpenAIProfile(paths, currentName);
+
+  if (await fileExists(nextProfileFilePath)) {
+    throw new Error(`Profile already exists: ${nextName}`);
+  }
+
+  await ensureProfileDirectory(paths.profileDirectoryPath);
+  await rename(currentProfileFilePath, nextProfileFilePath);
+  await chmod(nextProfileFilePath, SECRET_FILE_MODE);
+
+  return createSavedProfile(nextName, profile);
+}
+
 export async function setActiveOpenAIProfile(paths: OpenCodeAuthPaths, profile: OpenAIAuthProfile): Promise<OpenAIAuthProfile> {
   const authJson = await readAuthJson(paths.authFilePath);
 
@@ -213,6 +236,20 @@ async function unlinkIfExists(filePath: string): Promise<void> {
     if (!isNodeErrorWithCode(error, "ENOENT")) {
       throw error;
     }
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath, constants.F_OK);
+
+    return true;
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return false;
+    }
+
+    throw error;
   }
 }
 

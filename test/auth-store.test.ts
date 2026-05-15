@@ -6,6 +6,7 @@ import { describe, expect, test } from "vitest";
 import {
   listOpenAIProfiles,
   parseOpenAIAuthProfile,
+  renameOpenAIProfile,
   replaceOpenAIAuthProfile,
   saveActiveOpenAIProfile,
   switchActiveOpenAIProfile,
@@ -83,6 +84,37 @@ describe("auth-store", () => {
         accountId: WORK_ACCOUNT_ID,
       },
     ]);
+  });
+
+  test("should rename a saved OpenAI profile without changing its contents", async () => {
+    // given
+    const paths = await createTestPaths();
+    const accountProfile = createOpenAIProfile(WORK_ACCOUNT_ID);
+    await writeJson(join(paths.profileDirectoryPath, "openai-account-1.json"), accountProfile);
+
+    // when
+    const renamedProfile = await renameOpenAIProfile(paths, "account-1", "account-2");
+
+    // then
+    const renamedProfilePath = join(paths.profileDirectoryPath, "openai-account-2.json");
+    const renamedProfileContents = JSON.parse(await readFile(renamedProfilePath, "utf8")) as OpenAIAuthProfile;
+    const profiles = await listOpenAIProfiles(paths);
+    expect(renamedProfile).toEqual({ name: "account-2", accountId: WORK_ACCOUNT_ID });
+    expect(renamedProfileContents).toEqual(accountProfile);
+    expect(profiles).toEqual([{ name: "account-2", accountId: WORK_ACCOUNT_ID }]);
+  });
+
+  test("should reject renaming over an existing OpenAI profile", async () => {
+    // given
+    const paths = await createTestPaths();
+    await writeJson(join(paths.profileDirectoryPath, "openai-account-1.json"), createOpenAIProfile(WORK_ACCOUNT_ID));
+    await writeJson(join(paths.profileDirectoryPath, "openai-account-2.json"), createOpenAIProfile(PERSONAL_ACCOUNT_ID));
+
+    // when
+    const action = () => renameOpenAIProfile(paths, "account-1", "account-2");
+
+    // then
+    await expect(action).rejects.toThrow("Profile already exists: account-2");
   });
 
   test("should reject malformed OpenAI auth profiles", () => {

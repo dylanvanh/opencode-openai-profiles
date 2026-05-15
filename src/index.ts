@@ -6,6 +6,7 @@ import {
   getActiveOpenAIProfile,
   listOpenAIProfiles,
   openProfilesFolder,
+  renameOpenAIProfile,
   saveActiveOpenAIProfile,
   setActiveOpenAIProfile,
   switchActiveOpenAIProfile,
@@ -23,7 +24,7 @@ const RESTART_MESSAGE = "Restart opencode for the change to take effect.";
 const OPENAI_BROWSER_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (browser)";
 const OPENAI_HEADLESS_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (headless)";
 
-type MainAction = "switch" | "save" | "login" | "show-active" | "open-folder";
+type MainAction = "switch" | "save" | "rename" | "login" | "show-active" | "open-folder";
 type OpenAIAuthMethod = { label: string };
 type SelectedOpenAIAuthMethod = { index: number; label: string };
 type OpenAIAuthAuthorization = { url: string; method: "auto" | "code"; instructions: string };
@@ -110,6 +111,11 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
         description: "Save the currently active OpenAI account",
       },
       {
+        title: "Rename Profile",
+        value: "rename",
+        description: "Rename a saved OpenAI account profile",
+      },
+      {
         title: "Login to OpenAI",
         value: "login",
         description: "Start OpenCode's ChatGPT Pro/Plus browser login",
@@ -140,6 +146,11 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
 
           if (option.value === "save") {
             void runSafely(showSaveProfileDialog);
+            return;
+          }
+
+          if (option.value === "rename") {
+            void runSafely(showRenameProfileDialog);
             return;
           }
 
@@ -198,6 +209,48 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
           void runSafely(async () => {
             const savedProfile = await saveActiveOpenAIProfile(paths, profileName);
             showToast("success", `Saved ${savedProfile.name}.`);
+          });
+        },
+        onCancel: () => {
+          api.ui.dialog.clear();
+        },
+      }),
+    );
+  }
+
+  async function showRenameProfileDialog(): Promise<void> {
+    const savedProfiles = await listOpenAIProfiles(paths);
+
+    if (savedProfiles.length === 0) {
+      showToast("warning", "No saved OpenAI profiles found.");
+      return;
+    }
+
+    api.ui.dialog.replace(() =>
+      api.ui.DialogSelect({
+        title: "Rename OpenAI Profile",
+        options: savedProfiles.map((profile) => ({
+          title: profile.name,
+          value: profile,
+          description: formatAccountIdDescription(profile.accountId),
+        })),
+        onSelect: (option) => {
+          showRenameProfilePrompt(option.value);
+        },
+      }),
+    );
+  }
+
+  function showRenameProfilePrompt(profile: SavedProfile): void {
+    api.ui.dialog.replace(() =>
+      api.ui.DialogPrompt({
+        title: `Rename ${profile.name}`,
+        placeholder: profile.name,
+        onConfirm: (nextName) => {
+          api.ui.dialog.clear();
+          void runSafely(async () => {
+            const renamedProfile = await renameOpenAIProfile(paths, profile.name, nextName);
+            showToast("success", `Renamed ${profile.name} to ${renamedProfile.name}.`);
           });
         },
         onCancel: () => {
@@ -420,11 +473,12 @@ function formatAccountIdDescription(accountId: string | undefined): string {
 
 async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: string): Promise<string> {
   const paths = getOpenCodeAuthPaths();
-  const [action, argument] = rawArguments.trim().split(/\s+/, 2);
+  const [action, ...actionArguments] = rawArguments.trim().split(/\s+/).filter((argument) => argument.length > 0);
+  const argument = actionArguments[0];
 
   try {
     if (!action || action === "help") {
-      const message = `Usage: /${FALLBACK_COMMAND_NAME} save <name> | switch <name> | list | active | login [browser|headless]`;
+      const message = `Usage: /${FALLBACK_COMMAND_NAME} save <name> | switch <name> | rename <old> <new> | list | active | login [browser|headless]`;
       await showServerToast(ctx, "info", message);
       return message;
     }
@@ -447,6 +501,19 @@ async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: str
 
       const switchedProfile = await switchActiveOpenAIProfile(paths, argument);
       const message = `Switched to ${switchedProfile.name}. ${RESTART_MESSAGE}`;
+      await showServerToast(ctx, "success", message);
+      return message;
+    }
+
+    if (action === "rename") {
+      const [currentName, nextName] = actionArguments;
+
+      if (!currentName || !nextName) {
+        throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} rename <old> <new>`);
+      }
+
+      const renamedProfile = await renameOpenAIProfile(paths, currentName, nextName);
+      const message = `Renamed ${currentName} to ${renamedProfile.name}.`;
       await showServerToast(ctx, "success", message);
       return message;
     }
