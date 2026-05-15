@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { chmod, readFile, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Plugin } from "@opencode-ai/plugin";
 import type {
 	TuiDialogSelectOption,
@@ -37,10 +39,11 @@ import { getOpenCodeAuthPaths, OPENAI_PROVIDER_ID } from "./paths.js";
 const PLUGIN_ID = "opencode-openai-profiles";
 const TUI_COMMAND_NAME = "openai-profiles.open";
 const COMMAND_NAME = "openai-profiles";
-const COMMAND_ALIAS = "oa";
-const FALLBACK_COMMAND_NAME = "openai-account-cli";
+const CLI_COMMAND_NAME = "openai-profiles-cli";
 const RESTART_MESSAGE = "Restart opencode for the change to take effect.";
 const OPENAI_ACCOUNT_TOAST_TITLE = "OpenAI Account";
+const PENDING_LOGIN_FILE_NAME = "pending-openai-login.json";
+const SECRET_FILE_MODE = 0o600;
 
 type MainAction =
 	| "switch"
@@ -126,15 +129,26 @@ export const id = PLUGIN_ID;
 
 export const OpenAIAccountSwitcherPlugin: Plugin = async (ctx) => {
 	return {
+		config: async (config) => {
+			config.command ??= {};
+			config.command[CLI_COMMAND_NAME] ??= {
+				template: "OpenAI profiles CLI command",
+				description: "Manage saved OpenAI profiles",
+			};
+		},
 		"command.execute.before": async (input, output) => {
-			if (input.command !== FALLBACK_COMMAND_NAME) {
+			if (input.command !== CLI_COMMAND_NAME) {
 				return;
 			}
 
-			const message = await handleServerCommand(ctx, input.arguments);
+			const message = await handleServerCommand(
+				ctx,
+				input.arguments,
+				input.command,
+			);
 			output.parts.splice(0, output.parts.length, {
 				type: "text",
-				text: `OpenAI account command handled locally. Report this result to the user exactly: ${message}`,
+				text: message,
 			} as never);
 		},
 	};
@@ -577,10 +591,8 @@ export const tui = async (
 				category: "OpenAI",
 				namespace: "palette",
 				slashName: COMMAND_NAME,
-				slashAliases: [COMMAND_ALIAS],
 				slash: {
 					name: COMMAND_NAME,
-					aliases: [COMMAND_ALIAS],
 				},
 				run: showMainDialog,
 			},
@@ -601,7 +613,6 @@ export const tui = async (
 			category: "OpenAI",
 			slash: {
 				name: COMMAND_NAME,
-				aliases: [COMMAND_ALIAS],
 			},
 			onSelect: showMainDialog,
 		},
@@ -685,6 +696,7 @@ function formatSavedProfileDescription(profileNames: string[]): string {
 async function handleServerCommand(
 	ctx: Parameters<Plugin>[0],
 	rawArguments: string,
+	commandName = CLI_COMMAND_NAME,
 ): Promise<string> {
 	const paths = getOpenCodeAuthPaths();
 	const [action, ...actionArguments] = rawArguments
@@ -695,14 +707,14 @@ async function handleServerCommand(
 
 	try {
 		if (!action || action === "help") {
-			const message = `Usage: /${FALLBACK_COMMAND_NAME} save <name> | switch <name> | rename <old> <new> | list | active | login [browser|headless]`;
+			const message = getServerCommandUsage(commandName);
 			await showServerToast(ctx, "info", message);
 			return message;
 		}
 
 		if (action === "save") {
 			if (!argument) {
-				throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} save <name>`);
+				throw new Error(`Usage: /${commandName} save <name>`);
 			}
 
 			const savedProfile = await saveActiveOpenAIProfile(paths, argument);
@@ -713,7 +725,7 @@ async function handleServerCommand(
 
 		if (action === "switch") {
 			if (!argument) {
-				throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} switch <name>`);
+				throw new Error(`Usage: /${commandName} switch <name>`);
 			}
 
 			const client = ctx.client as unknown as ServerProviderClient;
@@ -733,7 +745,7 @@ async function handleServerCommand(
 			const [currentName, nextName] = actionArguments;
 
 			if (!currentName || !nextName) {
-				throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} rename <old> <new>`);
+				throw new Error(`Usage: /${commandName} rename <old> <new>`);
 			}
 
 			const renamedProfile = await renameOpenAIProfile(
@@ -767,7 +779,23 @@ async function handleServerCommand(
 		}
 
 		if (action === "login") {
-			return await startServerOpenAILogin(ctx, argument);
+			return await startServerOpenAILogin(ctx, argument, commandName);
+		}
+
+		if (action === "complete") {
+			const callbackUrlOrCode = actionArguments.join(" ").trim();
+
+			if (!callbackUrlOrCode) {
+				throw new Error(
+					`Usage: /${commandName} complete <callback-url-or-code>`,
+				);
+			}
+
+			return await completeServerHeadlessLogin(
+				ctx,
+				callbackUrlOrCode,
+				commandName,
+			);
 		}
 
 		throw new Error(`Unknown action: ${action}`);
@@ -781,6 +809,7 @@ async function handleServerCommand(
 async function startServerOpenAILogin(
 	ctx: Parameters<Plugin>[0],
 	methodPreference: string | undefined,
+	commandName = CLI_COMMAND_NAME,
 ): Promise<string> {
 	const client = ctx.client as unknown as ServerProviderClient;
 	const parsedMethodPreference =
@@ -788,6 +817,11 @@ async function startServerOpenAILogin(
 	const savedProfile = await saveActiveOpenAIProfileIfUnsaved(
 		getOpenCodeAuthPaths(),
 	);
+
+	if (parsedMethodPreference === "headless") {
+		return await startServerHeadlessLogin(savedProfile, commandName);
+	}
+
 	const authMethodsResult = await client.provider.auth({
 		directory: ctx.directory,
 	});
@@ -818,7 +852,9 @@ async function startServerOpenAILogin(
 	});
 
 	if (authorizationResult.error || !authorizationResult.data) {
-		throw new Error("Unable to start OpenAI login");
+		throw new Error(
+			`Unable to start OpenAI login: ${formatUnknownError(authorizationResult.error)}`,
+		);
 	}
 
 	const shouldOpenLoginUrl =
@@ -831,13 +867,141 @@ async function startServerOpenAILogin(
 	}
 
 	const loginMessage = shouldOpenLoginUrl
-		? `Opened OpenAI login. After login completes, run /${FALLBACK_COMMAND_NAME} save <name>.`
-		: `${authorizationResult.data.url} ${authorizationResult.data.instructions} Waiting for authorization. After login completes, restart opencode and run /${FALLBACK_COMMAND_NAME} save <name>.`;
+		? `Opened OpenAI login. After login completes, run /${commandName} save <name>.`
+		: `${authorizationResult.data.url} ${authorizationResult.data.instructions} Waiting for authorization. After login completes, restart opencode and run /${commandName} save <name>.`;
 	const message = savedProfile
 		? `Saved current profile as ${savedProfile.name} before login. ${loginMessage}`
 		: loginMessage;
 	await showServerToast(ctx, "info", message);
 	return message;
+}
+
+function getServerCommandUsage(commandName: string): string {
+	return `Usage: /${commandName} save <name> | switch <name> | rename <old> <new> | list | active | login [browser|headless] | complete <callback-url-or-code>`;
+}
+
+async function startServerHeadlessLogin(
+	savedProfile: SavedProfile | undefined,
+	commandName: string,
+): Promise<string> {
+	const paths = getOpenCodeAuthPaths();
+	const login = await createManualCodexLogin();
+
+	await writePendingManualCodexLogin(paths, login);
+
+	const loginMessage = `Open this URL in the browser account you want to save: ${login.url} After ChatGPT redirects to localhost, copy the full callback URL from the browser address bar and run /${commandName} complete <callback-url-or-code>.`;
+
+	return savedProfile
+		? `Saved current profile as ${savedProfile.name} before login. ${loginMessage}`
+		: loginMessage;
+}
+
+async function completeServerHeadlessLogin(
+	ctx: Parameters<Plugin>[0],
+	callbackUrlOrCode: string,
+	commandName: string,
+): Promise<string> {
+	const paths = getOpenCodeAuthPaths();
+	const login = await readPendingManualCodexLogin(paths);
+	const activeProfile = await completeManualCodexLogin(
+		login,
+		callbackUrlOrCode,
+	);
+	const client = ctx.client as unknown as ServerProviderClient;
+
+	await setActiveOpenAIProfile(paths, activeProfile);
+	await deletePendingManualCodexLogin(paths);
+
+	const didApplyActiveProfile = await applyServerActiveOpenAIProfile(
+		client,
+		activeProfile,
+	);
+	const restartMessage = didApplyActiveProfile ? "" : ` ${RESTART_MESSAGE}`;
+
+	return `OpenAI login complete.${restartMessage} Run /${commandName} save <name>.`;
+}
+
+async function writePendingManualCodexLogin(
+	paths: ReturnType<typeof getOpenCodeAuthPaths>,
+	login: ManualCodexLogin,
+): Promise<void> {
+	await openProfilesFolder(paths);
+
+	const filePath = getPendingManualCodexLoginFilePath(paths);
+
+	await writeFile(filePath, `${JSON.stringify(login, null, 2)}\n`, {
+		mode: SECRET_FILE_MODE,
+	});
+	await chmod(filePath, SECRET_FILE_MODE);
+}
+
+async function readPendingManualCodexLogin(
+	paths: ReturnType<typeof getOpenCodeAuthPaths>,
+): Promise<ManualCodexLogin> {
+	const filePath = getPendingManualCodexLoginFilePath(paths);
+	const fileContents = await readFile(filePath, "utf8");
+	const login = JSON.parse(fileContents) as unknown;
+
+	if (!isManualCodexLogin(login)) {
+		throw new Error("Pending OpenAI login is invalid. Start login again.");
+	}
+
+	return login;
+}
+
+async function deletePendingManualCodexLogin(
+	paths: ReturnType<typeof getOpenCodeAuthPaths>,
+): Promise<void> {
+	try {
+		await unlink(getPendingManualCodexLoginFilePath(paths));
+	} catch (error) {
+		if (!isNodeErrorWithCode(error, "ENOENT")) {
+			throw error;
+		}
+	}
+}
+
+function getPendingManualCodexLoginFilePath(
+	paths: ReturnType<typeof getOpenCodeAuthPaths>,
+): string {
+	return join(paths.profileDirectoryPath, PENDING_LOGIN_FILE_NAME);
+}
+
+function isManualCodexLogin(value: unknown): value is ManualCodexLogin {
+	return (
+		isRecord(value) &&
+		typeof value.url === "string" &&
+		typeof value.state === "string" &&
+		typeof value.verifier === "string"
+	);
+}
+
+function formatUnknownError(error: unknown): string {
+	if (!error) {
+		return "no response data";
+	}
+
+	if (error instanceof Error) {
+		return error.message;
+	}
+
+	if (typeof error === "string") {
+		return error;
+	}
+
+	try {
+		return JSON.stringify(error);
+	} catch {
+		return String(error);
+	}
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+	return error instanceof Error && "code" in error && error.code === code;
 }
 
 async function applyServerActiveOpenAIProfile(
