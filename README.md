@@ -2,7 +2,7 @@
 
 OpenCode TUI plugin for switching between saved OpenAI ChatGPT Pro/Plus OAuth profiles.
 
-OpenCode currently has one active `openai` auth slot. This plugin keeps named local copies of that OpenAI auth object and swaps one into the active `auth.json` when selected.
+OpenCode has one active `openai` auth slot. This plugin saves named copies of that auth object and swaps one into `auth.json` when you switch profiles.
 
 ## Status
 
@@ -10,22 +10,22 @@ Early local-first plugin. Restart OpenCode after switching profiles.
 
 ## Install
 
-From this repo during development:
+Build from this repo:
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-For local testing before publishing, install the package with OpenCode:
+Install the local plugin:
 
 ```bash
 opencode plugin "$PWD" --global --force
 ```
 
-This adds the package to OpenCode's server and TUI plugin configs when both targets are available.
+The command adds the package to OpenCode's server and TUI plugin configs when OpenCode exposes both targets.
 
-Once published, install the package with OpenCode or configure the server target directly:
+After publishing, add the package to your OpenCode config:
 
 ```json
 {
@@ -33,7 +33,7 @@ Once published, install the package with OpenCode or configure the server target
 }
 ```
 
-For OpenCode versions that support external TUI plugin targets, configure the TUI target directly:
+For OpenCode versions with external TUI plugin targets, add the TUI target:
 
 ```json
 {
@@ -43,21 +43,19 @@ For OpenCode versions that support external TUI plugin targets, configure the TU
 
 ## Usage
 
-Run the slash command in OpenCode:
+Open the account picker:
 
 ```text
 /openai-account
 ```
 
-Alias:
+Short alias:
 
 ```text
 /oa
 ```
 
-If the TUI plugin target is available, `/openai-account` opens a native picker dialog.
-
-Fallback command syntax:
+If the TUI target is unavailable, use the CLI fallback:
 
 ```text
 /openai-account-cli save <name>
@@ -68,50 +66,50 @@ Fallback command syntax:
 /openai-account-cli login [browser|headless]
 ```
 
-## First-Time Setup
+## First Setup
 
-If your current active OpenAI account is the first account you want to save, you can save it manually:
-
-```text
-/openai-account
-```
-
-Then choose `Save Current Profile` and enter `account-1` or any profile name you prefer.
-
-If you skip this, the plugin automatically saves the currently active unsaved account as `account-1` before starting a new OpenAI login.
-
-Then log in to another account once from the plugin:
+Save your current OpenAI account:
 
 ```text
 /openai-account
 ```
 
-Then choose `Login to OpenAI` and select `ChatGPT Pro/Plus (headless)` if you want to paste the final callback URL manually.
+Choose `Save Current Profile`, then enter `account-1` or another name.
 
-Or use the plugin fallback command:
+If you skip this step, the plugin saves the active unsaved account as `account-1` before starting a new OpenAI login.
+
+Log in to another account:
+
+```text
+/openai-account
+```
+
+Choose `Login to OpenAI`. Select `ChatGPT Pro/Plus (headless)` if you want to paste the final callback URL by hand.
+
+CLI fallback:
 
 ```text
 /openai-account-cli login browser
 /openai-account-cli login headless
 ```
 
-Restart OpenCode, then save the newly active account:
+Restart OpenCode, then save the new active account:
 
 ```text
 /openai-account
 ```
 
-Then choose `Save Current Profile` and enter `account-2` or any profile name you prefer.
+Choose `Save Current Profile`, then enter `account-2` or another name.
 
-After that, switch with:
+Switch profiles:
 
 ```text
 /openai-account
 ```
 
-Then choose `Switch Profile` and select one of your saved profile names.
+Choose `Switch Profile`, then select a saved profile.
 
-If the dialog is unavailable, use:
+CLI fallback:
 
 ```text
 /openai-account-cli switch account-1
@@ -122,13 +120,13 @@ Restart OpenCode after switching.
 
 ## Storage
 
-Active OpenCode auth remains here:
+OpenCode stores the active auth file here:
 
 ```text
 ~/.local/share/opencode/auth.json
 ```
 
-Saved OpenAI profiles are stored here:
+This plugin stores saved OpenAI profiles here:
 
 ```text
 ~/.local/share/opencode/auth-profiles/
@@ -141,12 +139,12 @@ openai-account-1.json
 openai-account-2.json
 ```
 
-Each profile file contains only the `openai` OAuth object. Other providers in `auth.json` are preserved.
+Each profile file contains only the `openai` OAuth object. The plugin preserves other providers in `auth.json`.
 
-## Security Notes
+## Security
 
-The profile files contain OAuth tokens. Treat them as secrets.
+Profile files contain OAuth tokens. Treat them as secrets.
 
 Do not commit `auth.json` or `auth-profiles`.
 
-This plugin never displays token values. It only shows the OpenAI `accountId` when available.
+The plugin never displays token values. It only shows the OpenAI `accountId` when available.
