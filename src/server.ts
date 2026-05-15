@@ -1,1 +1,4 @@
-export { OpenAIAccountSwitcherPlugin as default, OpenAIAccountSwitcherPlugin } from "./index.js";
+export {
+	OpenAIAccountSwitcherPlugin as default,
+	OpenAIAccountSwitcherPlugin,
+} from "./index.js";

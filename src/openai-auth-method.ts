@@ -8,41 +8,50 @@ const OPENAI_HEADLESS_METHOD_PREFERENCE = "headless";
 const NOT_FOUND_INDEX = -1;
 
 export type OpenAIAuthMethodPreference =
-  | typeof OPENAI_BROWSER_METHOD_PREFERENCE
-  | typeof OPENAI_HEADLESS_METHOD_PREFERENCE;
+	| typeof OPENAI_BROWSER_METHOD_PREFERENCE
+	| typeof OPENAI_HEADLESS_METHOD_PREFERENCE;
 
-export function parseOpenAIAuthMethodPreference(methodPreference: string | undefined): OpenAIAuthMethodPreference {
-  const trimmedMethodPreference = methodPreference?.trim();
+export function parseOpenAIAuthMethodPreference(
+	methodPreference: string | undefined,
+): OpenAIAuthMethodPreference {
+	const trimmedMethodPreference = methodPreference?.trim();
 
-  if (!trimmedMethodPreference || trimmedMethodPreference === OPENAI_BROWSER_METHOD_PREFERENCE) {
-    return OPENAI_BROWSER_METHOD_PREFERENCE;
-  }
+	if (
+		!trimmedMethodPreference ||
+		trimmedMethodPreference === OPENAI_BROWSER_METHOD_PREFERENCE
+	) {
+		return OPENAI_BROWSER_METHOD_PREFERENCE;
+	}
 
-  if (trimmedMethodPreference === OPENAI_HEADLESS_METHOD_PREFERENCE) {
-    return OPENAI_HEADLESS_METHOD_PREFERENCE;
-  }
+	if (trimmedMethodPreference === OPENAI_HEADLESS_METHOD_PREFERENCE) {
+		return OPENAI_HEADLESS_METHOD_PREFERENCE;
+	}
 
-  throw new Error("Use browser or headless for OpenAI login method");
+	throw new Error("Use browser or headless for OpenAI login method");
 }
 
 export function findOpenAIAuthMethodIndex(
-  openAIAuthMethods: ProviderAuthMethod[],
-  methodPreference: OpenAIAuthMethodPreference,
+	openAIAuthMethods: ProviderAuthMethod[],
+	methodPreference: OpenAIAuthMethodPreference,
 ): number | undefined {
-  const preferredMethodLabel = getOpenAIAuthMethodLabel(methodPreference);
-  const methodIndex = openAIAuthMethods.findIndex((method) => method.label === preferredMethodLabel);
+	const preferredMethodLabel = getOpenAIAuthMethodLabel(methodPreference);
+	const methodIndex = openAIAuthMethods.findIndex(
+		(method) => method.label === preferredMethodLabel,
+	);
 
-  if (methodIndex === NOT_FOUND_INDEX) {
-    return undefined;
-  }
+	if (methodIndex === NOT_FOUND_INDEX) {
+		return undefined;
+	}
 
-  return methodIndex;
+	return methodIndex;
 }
 
-function getOpenAIAuthMethodLabel(methodPreference: OpenAIAuthMethodPreference): string {
-  if (methodPreference === OPENAI_HEADLESS_METHOD_PREFERENCE) {
-    return OPENAI_HEADLESS_LOGIN_METHOD_LABEL;
-  }
+function getOpenAIAuthMethodLabel(
+	methodPreference: OpenAIAuthMethodPreference,
+): string {
+	if (methodPreference === OPENAI_HEADLESS_METHOD_PREFERENCE) {
+		return OPENAI_HEADLESS_LOGIN_METHOD_LABEL;
+	}
 
-  return OPENAI_BROWSER_LOGIN_METHOD_LABEL;
+	return OPENAI_BROWSER_LOGIN_METHOD_LABEL;
 }
