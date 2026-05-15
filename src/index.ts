@@ -14,7 +14,14 @@ import {
   type SavedProfile,
 } from "./auth-store.js";
 import { completeManualCodexLogin, createManualCodexLogin, type ManualCodexLogin } from "./codex-oauth.js";
-import { getOpenCodeAuthPaths } from "./paths.js";
+import {
+  findOpenAIAuthMethodIndex,
+  OPENAI_BROWSER_LOGIN_METHOD_LABEL,
+  OPENAI_HEADLESS_LOGIN_METHOD_LABEL,
+  parseOpenAIAuthMethodPreference,
+  type OpenAIAuthMethod,
+} from "./openai-auth-method.js";
+import { getOpenCodeAuthPaths, OPENAI_PROVIDER_ID } from "./paths.js";
 
 const PLUGIN_ID = "opencode-openai-profiles";
 const TUI_COMMAND_NAME = "openai-account.open";
@@ -22,13 +29,36 @@ const COMMAND_NAME = "openai-account";
 const COMMAND_ALIAS = "oa";
 const FALLBACK_COMMAND_NAME = "openai-account-cli";
 const RESTART_MESSAGE = "Restart opencode for the change to take effect.";
-const OPENAI_BROWSER_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (browser)";
-const OPENAI_HEADLESS_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (headless)";
+const OPENAI_ACCOUNT_TOAST_TITLE = "OpenAI Account";
 
 type MainAction = "switch" | "save" | "rename" | "login" | "show-active" | "open-folder";
-type OpenAIAuthMethod = { label: string };
 type SelectedOpenAIAuthMethod = { index: number; label: string };
 type OpenAIAuthAuthorization = { url: string; method: "auto" | "code"; instructions: string };
+type ServerProviderClient = {
+  provider: {
+    auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, OpenAIAuthMethod[]>; error?: unknown }>;
+    oauth: {
+      authorize(parameters: {
+        providerID: string;
+        directory?: string;
+        method: number;
+      }): Promise<{ data?: OpenAIAuthAuthorization; error?: unknown }>;
+    };
+  };
+};
+type ServerToastClient = {
+  tui?: {
+    showToast(parameters?: {
+      directory?: string;
+      title?: string;
+      message?: string;
+      variant?: "info" | "success" | "warning" | "error";
+    }): Promise<unknown>;
+  };
+  app: {
+    log(parameters?: { level?: "debug" | "info" | "error" | "warn"; message?: string }): Promise<unknown>;
+  };
+};
 type TuiCommandLayer = {
   commands: Array<{
     name: string;
@@ -79,7 +109,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
   const api = inputApi;
   const paths = getOpenCodeAuthPaths();
 
-  function showToast(variant: "info" | "success" | "warning" | "error", message: string, title = "OpenAI Account"): void {
+  function showToast(variant: "info" | "success" | "warning" | "error", message: string, title = OPENAI_ACCOUNT_TOAST_TITLE): void {
     api.ui.toast({
       variant,
       title,
@@ -135,7 +165,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
 
     api.ui.dialog.replace(() =>
       api.ui.DialogSelect({
-        title: "OpenAI Account",
+        title: OPENAI_ACCOUNT_TOAST_TITLE,
         options,
         onSelect: (option) => {
           api.ui.dialog.clear();
@@ -296,7 +326,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
       throw new Error("Unable to load OpenAI login methods");
     }
 
-    const openAIAuthMethods = authMethodsResult.data.openai ?? [];
+    const openAIAuthMethods = authMethodsResult.data[OPENAI_PROVIDER_ID] ?? [];
 
     if (openAIAuthMethods.length === 0) {
       throw new Error("No OpenAI login methods found");
@@ -341,7 +371,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     }
 
     const authorizationResult = await api.client.provider.oauth.authorize({
-      providerID: "openai",
+      providerID: OPENAI_PROVIDER_ID,
       directory: api.state.path.directory,
       method: method.index,
     });
@@ -394,7 +424,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
 
   async function completeOpenAILogin(methodIndex: number): Promise<void> {
     const callbackResult = await api.client.provider.oauth.callback({
-      providerID: "openai",
+      providerID: OPENAI_PROVIDER_ID,
       method: methodIndex,
     });
 
@@ -426,7 +456,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     commands: [
       {
         name: TUI_COMMAND_NAME,
-        title: "OpenAI Account",
+        title: OPENAI_ACCOUNT_TOAST_TITLE,
         desc: "Switch saved OpenAI ChatGPT account profiles",
         description: "Switch saved OpenAI ChatGPT account profiles",
         category: "OpenAI",
@@ -450,7 +480,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
 
   const unregisterLegacyCommand = api.command?.register(() => [
     {
-      title: "OpenAI Account",
+      title: OPENAI_ACCOUNT_TOAST_TITLE,
       value: TUI_COMMAND_NAME,
       description: "Switch saved OpenAI ChatGPT account profiles",
       category: "OpenAI",
@@ -600,14 +630,8 @@ async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: str
 }
 
 async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreference: string | undefined): Promise<string> {
-  const client = ctx.client as unknown as {
-    provider: {
-      auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, OpenAIAuthMethod[]>; error?: unknown }>;
-      oauth: {
-        authorize(parameters: { providerID: string; directory?: string; method: number }): Promise<{ data?: OpenAIAuthAuthorization; error?: unknown }>;
-      };
-    };
-  };
+  const client = ctx.client as unknown as ServerProviderClient;
+  const parsedMethodPreference = parseOpenAIAuthMethodPreference(methodPreference);
   const savedProfile = await saveActiveOpenAIProfileIfUnsaved(getOpenCodeAuthPaths());
   const authMethodsResult = await client.provider.auth({ directory: ctx.directory });
 
@@ -615,17 +639,17 @@ async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreferen
     throw new Error("Unable to load OpenAI login methods");
   }
 
-  const openAIAuthMethods = authMethodsResult.data.openai ?? [];
-  const methodIndex = findOpenAIAuthMethodIndex(openAIAuthMethods, methodPreference);
+  const openAIAuthMethods = authMethodsResult.data[OPENAI_PROVIDER_ID] ?? [];
+  const methodIndex = findOpenAIAuthMethodIndex(openAIAuthMethods, parsedMethodPreference);
 
-  if (methodIndex === -1) {
+  if (methodIndex === undefined) {
     const availableMethods = openAIAuthMethods.map((method) => method.label).join(", ") || "none";
 
     throw new Error(`OpenAI login method not found. Available: ${availableMethods}`);
   }
 
   const authorizationResult = await client.provider.oauth.authorize({
-    providerID: "openai",
+    providerID: OPENAI_PROVIDER_ID,
     directory: ctx.directory,
     method: methodIndex,
   });
@@ -648,38 +672,17 @@ async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreferen
   return message;
 }
 
-function findOpenAIAuthMethodIndex(openAIAuthMethods: OpenAIAuthMethod[], methodPreference: string | undefined): number {
-  if (!methodPreference || methodPreference === "browser") {
-    return openAIAuthMethods.findIndex((method) => method.label === OPENAI_BROWSER_LOGIN_METHOD_LABEL);
-  }
-
-  if (methodPreference === "headless") {
-    return openAIAuthMethods.findIndex((method) => method.label === OPENAI_HEADLESS_LOGIN_METHOD_LABEL);
-  }
-
-  const normalizedPreference = methodPreference.toLowerCase();
-
-  return openAIAuthMethods.findIndex((method) => method.label.toLowerCase() === normalizedPreference);
-}
-
 async function showServerToast(
   ctx: Parameters<Plugin>[0],
   variant: "info" | "success" | "warning" | "error",
   message: string,
 ): Promise<void> {
-  const client = ctx.client as unknown as {
-    tui?: {
-      showToast(parameters?: { directory?: string; title?: string; message?: string; variant?: "info" | "success" | "warning" | "error" }): Promise<unknown>;
-    };
-    app: {
-      log(parameters?: { level?: "debug" | "info" | "error" | "warn"; message?: string }): Promise<unknown>;
-    };
-  };
+  const client = ctx.client as unknown as ServerToastClient;
 
   if (client.tui) {
     await client.tui.showToast({
       directory: ctx.directory,
-      title: "OpenAI Account",
+      title: OPENAI_ACCOUNT_TOAST_TITLE,
       message,
       variant,
     });
