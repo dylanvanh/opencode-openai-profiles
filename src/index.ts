@@ -8,6 +8,7 @@ import {
   openProfilesFolder,
   renameOpenAIProfile,
   saveActiveOpenAIProfile,
+  saveActiveOpenAIProfileIfUnsaved,
   setActiveOpenAIProfile,
   switchActiveOpenAIProfile,
   type SavedProfile,
@@ -15,7 +16,7 @@ import {
 import { completeManualCodexLogin, createManualCodexLogin, type ManualCodexLogin } from "./codex-oauth.js";
 import { getOpenCodeAuthPaths } from "./paths.js";
 
-const PLUGIN_ID = "opencode-openai-account-switcher";
+const PLUGIN_ID = "opencode-openai-profiles";
 const TUI_COMMAND_NAME = "openai-account.open";
 const COMMAND_NAME = "openai-account";
 const COMMAND_ALIAS = "oa";
@@ -285,6 +286,8 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
   }
 
   async function showLoginMethodDialog(): Promise<void> {
+    await saveCurrentProfileBeforeLogin();
+
     const authMethodsResult = await api.client.provider.auth({
       directory: api.state.path.directory,
     });
@@ -320,6 +323,14 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
         },
       }),
     );
+  }
+
+  async function saveCurrentProfileBeforeLogin(): Promise<void> {
+    const savedProfile = await saveActiveOpenAIProfileIfUnsaved(paths);
+
+    if (savedProfile) {
+      showToast("success", `Saved current profile as ${savedProfile.name} before login.`);
+    }
   }
 
   async function startOpenAILogin(method: SelectedOpenAIAuthMethod): Promise<void> {
@@ -597,6 +608,7 @@ async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreferen
       };
     };
   };
+  const savedProfile = await saveActiveOpenAIProfileIfUnsaved(getOpenCodeAuthPaths());
   const authMethodsResult = await client.provider.auth({ directory: ctx.directory });
 
   if (authMethodsResult.error || !authMethodsResult.data) {
@@ -628,9 +640,10 @@ async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreferen
     openPathOrUrl(authorizationResult.data.url);
   }
 
-  const message = shouldOpenLoginUrl
+  const loginMessage = shouldOpenLoginUrl
     ? `Opened OpenAI login. After login completes, run /${FALLBACK_COMMAND_NAME} save <name>.`
     : `${authorizationResult.data.url} ${authorizationResult.data.instructions} Waiting for authorization. After login completes, restart opencode and run /${FALLBACK_COMMAND_NAME} save <name>.`;
+  const message = savedProfile ? `Saved current profile as ${savedProfile.name} before login. ${loginMessage}` : loginMessage;
   await showServerToast(ctx, "info", message);
   return message;
 }

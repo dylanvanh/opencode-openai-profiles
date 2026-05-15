@@ -9,6 +9,7 @@ import {
   renameOpenAIProfile,
   replaceOpenAIAuthProfile,
   saveActiveOpenAIProfile,
+  saveActiveOpenAIProfileIfUnsaved,
   switchActiveOpenAIProfile,
   type AuthJson,
   type OpenAIAuthProfile,
@@ -61,6 +62,61 @@ describe("auth-store", () => {
     expect(savedProfile).toEqual(workProfile);
     expect(profileDirectoryMode).toBe(PROFILE_DIRECTORY_MODE);
     expect(savedProfileMode).toBe(AUTH_FILE_MODE);
+  });
+
+  test("should save an unsaved active OpenAI profile with the next default account name", async () => {
+    // given
+    const paths = await createTestPaths();
+    const workProfile = createOpenAIProfile(WORK_ACCOUNT_ID);
+    await writeJson(paths.authFilePath, {
+      openai: workProfile,
+    });
+
+    // when
+    const savedProfile = await saveActiveOpenAIProfileIfUnsaved(paths);
+
+    // then
+    const savedProfilePath = join(paths.profileDirectoryPath, "openai-account-1.json");
+    const savedProfileContents = JSON.parse(await readFile(savedProfilePath, "utf8")) as OpenAIAuthProfile;
+    expect(savedProfile).toEqual({ name: "account-1", accountId: WORK_ACCOUNT_ID });
+    expect(savedProfileContents).toEqual(workProfile);
+  });
+
+  test("should use the next available default account name when preserving active OpenAI profile", async () => {
+    // given
+    const paths = await createTestPaths();
+    const personalProfile = createOpenAIProfile(PERSONAL_ACCOUNT_ID);
+    await writeJson(paths.authFilePath, {
+      openai: personalProfile,
+    });
+    await writeJson(join(paths.profileDirectoryPath, "openai-account-1.json"), createOpenAIProfile(WORK_ACCOUNT_ID));
+
+    // when
+    const savedProfile = await saveActiveOpenAIProfileIfUnsaved(paths);
+
+    // then
+    const savedProfilePath = join(paths.profileDirectoryPath, "openai-account-2.json");
+    const savedProfileContents = JSON.parse(await readFile(savedProfilePath, "utf8")) as OpenAIAuthProfile;
+    expect(savedProfile).toEqual({ name: "account-2", accountId: PERSONAL_ACCOUNT_ID });
+    expect(savedProfileContents).toEqual(personalProfile);
+  });
+
+  test("should not duplicate an already saved active OpenAI profile", async () => {
+    // given
+    const paths = await createTestPaths();
+    const workProfile = createOpenAIProfile(WORK_ACCOUNT_ID);
+    await writeJson(paths.authFilePath, {
+      openai: workProfile,
+    });
+    await writeJson(join(paths.profileDirectoryPath, "openai-work.json"), workProfile);
+
+    // when
+    const savedProfile = await saveActiveOpenAIProfileIfUnsaved(paths);
+
+    // then
+    const profiles = await listOpenAIProfiles(paths);
+    expect(savedProfile).toBeUndefined();
+    expect(profiles).toEqual([{ name: "work", accountId: WORK_ACCOUNT_ID }]);
   });
 
   test("should list saved OpenAI profiles sorted by profile name", async () => {
@@ -150,7 +206,7 @@ describe("auth-store", () => {
 });
 
 async function createTestPaths(): Promise<OpenCodeAuthPaths> {
-  const temporaryDirectoryPath = await mkdtemp(join(tmpdir(), "opencode-openai-account-switcher-"));
+  const temporaryDirectoryPath = await mkdtemp(join(tmpdir(), "opencode-openai-profiles-"));
   const profileDirectoryPath = join(temporaryDirectoryPath, "auth-profiles");
   await mkdir(profileDirectoryPath, { recursive: true });
 

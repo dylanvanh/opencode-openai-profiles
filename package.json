@@ -1,5 +1,5 @@
 {
-  "name": "opencode-openai-account-switcher",
+  "name": "opencode-openai-profiles",
   "version": "0.1.0",
   "description": "OpenCode TUI plugin for switching saved OpenAI ChatGPT OAuth profiles.",
   "type": "module",

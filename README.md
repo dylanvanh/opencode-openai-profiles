@@ -1,4 +1,4 @@
-# opencode-openai-account-switcher
+# opencode-openai-profiles
 
 OpenCode TUI plugin for switching between saved OpenAI ChatGPT Pro/Plus OAuth profiles.
 
@@ -29,7 +29,7 @@ Once published, install the package with OpenCode or configure the server target
 
 ```json
 {
-  "plugin": ["opencode-openai-account-switcher"]
+  "plugin": ["opencode-openai-profiles"]
 }
 ```
 
@@ -37,7 +37,7 @@ For OpenCode versions that support external TUI plugin targets, configure the TU
 
 ```json
 {
-  "plugin": ["opencode-openai-account-switcher/tui"]
+  "plugin": ["opencode-openai-profiles/tui"]
 }
 ```
 
@@ -70,13 +70,15 @@ Fallback command syntax:
 
 ## First-Time Setup
 
-If your current active OpenAI account is the first account you want to save:
+If your current active OpenAI account is the first account you want to save, you can save it manually:
 
 ```text
 /openai-account
 ```
 
 Then choose `Save Current Profile` and enter `account-1` or any profile name you prefer.
+
+If you skip this, the plugin automatically saves the currently active unsaved account as `account-1` before starting a new OpenAI login.
 
 Then log in to another account once from the plugin:
 
@@ -86,11 +88,11 @@ Then log in to another account once from the plugin:
 
 Then choose `Login to OpenAI` and select `ChatGPT Pro/Plus (headless)` if you want to paste the final callback URL manually.
 
-Or use the CLI directly:
+Or use the plugin fallback command:
 
-```bash
-opencode auth login --provider openai --method "ChatGPT Pro/Plus (browser)"
-opencode auth login --provider openai --method "ChatGPT Pro/Plus (headless)"
+```text
+/openai-account-cli login browser
+/openai-account-cli login headless
 ```
 
 Restart OpenCode, then save the newly active account:

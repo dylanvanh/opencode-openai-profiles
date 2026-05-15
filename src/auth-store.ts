@@ -45,6 +45,32 @@ export async function saveActiveOpenAIProfile(paths: OpenCodeAuthPaths, inputPro
   return createSavedProfile(profileName, activeProfile);
 }
 
+export async function saveActiveOpenAIProfileIfUnsaved(paths: OpenCodeAuthPaths): Promise<SavedProfile | undefined> {
+  const activeProfile = await getActiveOpenAIProfileIfPresent(paths);
+
+  if (!activeProfile) {
+    return undefined;
+  }
+
+  const savedProfiles = await listOpenAIProfiles(paths);
+
+  for (const savedProfile of savedProfiles) {
+    const profile = await readOpenAIProfile(paths, savedProfile.name);
+
+    if (isSameOpenAIProfile(activeProfile, profile)) {
+      return undefined;
+    }
+  }
+
+  const profileName = getNextDefaultProfileName(savedProfiles);
+  const profileFilePath = getProfileFilePath(paths, profileName);
+
+  await ensureProfileDirectory(paths.profileDirectoryPath);
+  await writeSecretJsonFile(profileFilePath, activeProfile);
+
+  return createSavedProfile(profileName, activeProfile);
+}
+
 export async function switchActiveOpenAIProfile(paths: OpenCodeAuthPaths, inputProfileName: string): Promise<SavedProfile> {
   const profileName = parseProfileName(inputProfileName);
   const selectedProfile = await readOpenAIProfile(paths, profileName);
@@ -183,6 +209,45 @@ async function readAuthJson(authFilePath: string): Promise<AuthJson> {
   }
 
   return authJson as AuthJson;
+}
+
+async function getActiveOpenAIProfileIfPresent(paths: OpenCodeAuthPaths): Promise<OpenAIAuthProfile | undefined> {
+  let authJson: AuthJson;
+
+  try {
+    authJson = await readAuthJson(paths.authFilePath);
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return undefined;
+    }
+
+    throw error;
+  }
+
+  if (!(OPENAI_PROVIDER_ID in authJson)) {
+    return undefined;
+  }
+
+  return parseOpenAIAuthProfile(authJson[OPENAI_PROVIDER_ID]);
+}
+
+function getNextDefaultProfileName(savedProfiles: SavedProfile[]): string {
+  const usedProfileNames = new Set(savedProfiles.map((profile) => profile.name));
+  let nextProfileIndex = 1;
+
+  while (usedProfileNames.has(`account-${nextProfileIndex}`)) {
+    nextProfileIndex += 1;
+  }
+
+  return `account-${nextProfileIndex}`;
+}
+
+function isSameOpenAIProfile(leftProfile: OpenAIAuthProfile, rightProfile: OpenAIAuthProfile): boolean {
+  if (leftProfile.accountId && rightProfile.accountId) {
+    return leftProfile.accountId === rightProfile.accountId;
+  }
+
+  return leftProfile.refresh === rightProfile.refresh;
 }
 
 async function readJsonFile(filePath: string): Promise<unknown> {
