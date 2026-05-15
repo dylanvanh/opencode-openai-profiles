@@ -57,6 +57,16 @@ export async function switchActiveOpenAIProfile(paths: OpenCodeAuthPaths, inputP
   return createSavedProfile(profileName, selectedProfile);
 }
 
+export async function setActiveOpenAIProfile(paths: OpenCodeAuthPaths, profile: OpenAIAuthProfile): Promise<OpenAIAuthProfile> {
+  const authJson = await readAuthJson(paths.authFilePath);
+
+  authJson[OPENAI_PROVIDER_ID] = profile;
+
+  await writeAuthJsonAtomically(paths.authFilePath, authJson);
+
+  return profile;
+}
+
 export async function listOpenAIProfiles(paths: OpenCodeAuthPaths): Promise<SavedProfile[]> {
   let profileFileNames: string[];
 

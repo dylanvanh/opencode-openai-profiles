@@ -7,9 +7,11 @@ import {
   listOpenAIProfiles,
   openProfilesFolder,
   saveActiveOpenAIProfile,
+  setActiveOpenAIProfile,
   switchActiveOpenAIProfile,
   type SavedProfile,
 } from "./auth-store.js";
+import { completeManualCodexLogin, createManualCodexLogin, type ManualCodexLogin } from "./codex-oauth.js";
 import { getOpenCodeAuthPaths } from "./paths.js";
 
 const PLUGIN_ID = "opencode-openai-account-switcher";
@@ -19,23 +21,31 @@ const COMMAND_ALIAS = "oa";
 const FALLBACK_COMMAND_NAME = "openai-account-cli";
 const RESTART_MESSAGE = "Restart opencode for the change to take effect.";
 const OPENAI_BROWSER_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (browser)";
+const OPENAI_HEADLESS_LOGIN_METHOD_LABEL = "ChatGPT Pro/Plus (headless)";
 
 type MainAction = "switch" | "save" | "login" | "show-active" | "open-folder";
+type OpenAIAuthMethod = { label: string };
+type SelectedOpenAIAuthMethod = { index: number; label: string };
+type OpenAIAuthAuthorization = { url: string; method: "auto" | "code"; instructions: string };
+type TuiCommandLayer = {
+  commands: Array<{
+    name: string;
+    title: string;
+    desc?: string;
+    description?: string;
+    category?: string;
+    namespace: "palette";
+    slashName?: string;
+    slashAliases?: string[];
+    slash?: { name: string; aliases?: string[] };
+    run: () => void | Promise<void>;
+  }>;
+  bindings?: Array<{ key: string; cmd: string; desc?: string }>;
+};
+
 type TuiCommandLayerApi = TuiPluginApi & {
-  keymap: {
-    registerLayer(layer: {
-      commands: Array<{
-        name: string;
-        title: string;
-        description?: string;
-        category?: string;
-        namespace: "palette";
-        slashName?: string;
-        slashAliases?: string[];
-        run: () => void | Promise<void>;
-      }>;
-      bindings?: Array<{ key: string; cmd: string; desc?: string }>;
-    }): () => void;
+  keymap?: {
+    registerLayer?: (layer: TuiCommandLayer) => () => void;
   };
 };
 
@@ -44,7 +54,7 @@ export const id = PLUGIN_ID;
 export const OpenAIAccountSwitcherPlugin: Plugin = async (ctx) => {
   return {
     "command.execute.before": async (input, output) => {
-      if (input.command !== COMMAND_NAME && input.command !== FALLBACK_COMMAND_NAME) {
+      if (input.command !== FALLBACK_COMMAND_NAME) {
         return;
       }
 
@@ -129,12 +139,12 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
           }
 
           if (option.value === "save") {
-            showSaveProfileDialog();
+            void runSafely(showSaveProfileDialog);
             return;
           }
 
           if (option.value === "login") {
-            void runSafely(startOpenAIBrowserLogin);
+            void runSafely(showLoginMethodDialog);
             return;
           }
 
@@ -176,11 +186,13 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     );
   }
 
-  function showSaveProfileDialog(): void {
+  async function showSaveProfileDialog(): Promise<void> {
+    const placeholder = await getNextProfileNamePlaceholder();
+
     api.ui.dialog.replace(() =>
       api.ui.DialogPrompt({
         title: "Save Current OpenAI Profile",
-        placeholder: "work",
+        placeholder,
         onConfirm: (profileName) => {
           api.ui.dialog.clear();
           void runSafely(async () => {
@@ -195,6 +207,18 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     );
   }
 
+  async function getNextProfileNamePlaceholder(): Promise<string> {
+    const savedProfiles = await listOpenAIProfiles(paths);
+    const usedProfileNames = new Set(savedProfiles.map((profile) => profile.name));
+    let nextProfileIndex = 1;
+
+    while (usedProfileNames.has(`account-${nextProfileIndex}`)) {
+      nextProfileIndex += 1;
+    }
+
+    return `account-${nextProfileIndex}`;
+  }
+
   async function showActiveAccount(): Promise<void> {
     if (!(await authFileExists(paths))) {
       showToast("warning", "No opencode auth.json found. Log in to OpenAI first.");
@@ -205,7 +229,7 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     showToast("info", formatAccountIdDescription(activeProfile.accountId));
   }
 
-  async function startOpenAIBrowserLogin(): Promise<void> {
+  async function showLoginMethodDialog(): Promise<void> {
     const authMethodsResult = await api.client.provider.auth({
       directory: api.state.path.directory,
     });
@@ -215,26 +239,114 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     }
 
     const openAIAuthMethods = authMethodsResult.data.openai ?? [];
-    const browserMethodIndex = openAIAuthMethods.findIndex((method) => method.label === OPENAI_BROWSER_LOGIN_METHOD_LABEL);
 
-    if (browserMethodIndex === -1) {
-      const availableMethods = openAIAuthMethods.map((method) => method.label).join(", ") || "none";
+    if (openAIAuthMethods.length === 0) {
+      throw new Error("No OpenAI login methods found");
+    }
 
-      throw new Error(`OpenAI browser login method not found. Available: ${availableMethods}`);
+    api.ui.dialog.replace(() =>
+      api.ui.DialogSelect({
+        title: "OpenAI Login Method",
+        options: openAIAuthMethods.map((method, index) => {
+          const option: TuiDialogSelectOption<SelectedOpenAIAuthMethod> = {
+            title: method.label,
+            value: { index, label: method.label },
+          };
+
+          if (method.label === OPENAI_HEADLESS_LOGIN_METHOD_LABEL) {
+            option.description = "Use this if browser login reuses the wrong account";
+          }
+
+          return option;
+        }),
+        onSelect: (option) => {
+          api.ui.dialog.clear();
+          void runSafely(async () => startOpenAILogin(option.value));
+        },
+      }),
+    );
+  }
+
+  async function startOpenAILogin(method: SelectedOpenAIAuthMethod): Promise<void> {
+    if (method.label === OPENAI_HEADLESS_LOGIN_METHOD_LABEL) {
+      const login = await createManualCodexLogin();
+      showManualCallbackLoginDialog(login);
+      return;
     }
 
     const authorizationResult = await api.client.provider.oauth.authorize({
       providerID: "openai",
       directory: api.state.path.directory,
-      method: browserMethodIndex,
+      method: method.index,
     });
 
-    if (authorizationResult.error) {
+    if (authorizationResult.error || !authorizationResult.data) {
       throw new Error("Unable to start OpenAI login");
     }
 
+    if (authorizationResult.data.method === "code" || method.label === OPENAI_HEADLESS_LOGIN_METHOD_LABEL) {
+      showHeadlessLoginInstructions(method.label, authorizationResult.data);
+      void runSafely(async () => completeOpenAILogin(method.index));
+      return;
+    }
+
     openPathOrUrl(authorizationResult.data.url);
-    showToast("info", "Opened OpenAI login. After login completes, save the current profile as personal.");
+    showToast("info", "Opened OpenAI login. Keep opencode open until login completes.");
+    void runSafely(async () => completeOpenAILogin(method.index));
+  }
+
+  function showManualCallbackLoginDialog(login: ManualCodexLogin): void {
+    api.ui.dialog.replace(() =>
+      api.ui.DialogAlert({
+        title: "Headless OpenAI Login",
+        message: `Open this URL in the browser account you want to save:\n\n${login.url}\n\nAfter ChatGPT redirects to localhost, copy the full URL from the browser address bar and press OK.`,
+        onConfirm: () => showManualCallbackPrompt(login),
+      }),
+    );
+  }
+
+  function showManualCallbackPrompt(login: ManualCodexLogin): void {
+    api.ui.dialog.replace(() =>
+      api.ui.DialogPrompt({
+        title: "Paste OpenAI Callback URL",
+        placeholder: "http://localhost:1455/auth/callback?code=...",
+        onConfirm: (callbackUrlOrCode) => {
+          api.ui.dialog.clear();
+          void runSafely(async () => {
+            const activeProfile = await completeManualCodexLogin(login, callbackUrlOrCode);
+            await setActiveOpenAIProfile(paths, activeProfile);
+            showToast("success", "OpenAI login complete.");
+            await showSaveProfileDialog();
+          });
+        },
+        onCancel: () => {
+          api.ui.dialog.clear();
+        },
+      }),
+    );
+  }
+
+  async function completeOpenAILogin(methodIndex: number): Promise<void> {
+    const callbackResult = await api.client.provider.oauth.callback({
+      providerID: "openai",
+      method: methodIndex,
+    });
+
+    if (callbackResult.error) {
+      throw new Error("OpenAI login did not complete");
+    }
+
+    showToast("success", "OpenAI login complete.");
+    await showSaveProfileDialog();
+  }
+
+  function showHeadlessLoginInstructions(methodLabel: string, authorization: OpenAIAuthAuthorization): void {
+    api.ui.dialog.replace(() =>
+      api.ui.DialogAlert({
+        title: methodLabel,
+        message: `${authorization.url}\n\n${authorization.instructions}\n\nWaiting for authorization...\n\nKeep opencode open until login completes. You will be prompted to save the profile.`,
+      }),
+    );
   }
 
   async function openProfileDirectory(): Promise<void> {
@@ -243,30 +355,60 @@ export const tui = async (inputApi: TuiPluginApi | Record<string, unknown>): Pro
     showToast("info", paths.profileDirectoryPath);
   }
 
-  const unregisterCommandLayer = api.keymap.registerLayer({
+  const unregisterCallbacks: Array<() => void> = [];
+  const commandLayer: TuiCommandLayer = {
     commands: [
       {
         name: TUI_COMMAND_NAME,
         title: "OpenAI Account",
+        desc: "Switch saved OpenAI ChatGPT account profiles",
         description: "Switch saved OpenAI ChatGPT account profiles",
         category: "OpenAI",
         namespace: "palette",
         slashName: COMMAND_NAME,
         slashAliases: [COMMAND_ALIAS],
+        slash: {
+          name: COMMAND_NAME,
+          aliases: [COMMAND_ALIAS],
+        },
         run: showMainDialog,
       },
     ],
-  });
+  };
 
-  api.lifecycle.onDispose(unregisterCommandLayer);
+  const unregisterCommandLayer = api.keymap?.registerLayer?.(commandLayer);
+
+  if (unregisterCommandLayer) {
+    unregisterCallbacks.push(unregisterCommandLayer);
+  }
+
+  const unregisterLegacyCommand = api.command?.register(() => [
+    {
+      title: "OpenAI Account",
+      value: TUI_COMMAND_NAME,
+      description: "Switch saved OpenAI ChatGPT account profiles",
+      category: "OpenAI",
+      slash: {
+        name: COMMAND_NAME,
+        aliases: [COMMAND_ALIAS],
+      },
+      onSelect: showMainDialog,
+    },
+  ]);
+
+  if (unregisterLegacyCommand) {
+    unregisterCallbacks.push(unregisterLegacyCommand);
+  }
+
+  api.lifecycle.onDispose(() => {
+    for (const unregisterCallback of unregisterCallbacks) {
+      unregisterCallback();
+    }
+  });
 };
 
 function isTuiPluginApi(api: TuiPluginApi | Record<string, unknown>): api is TuiCommandLayerApi {
-  if (!("keymap" in api) || typeof api.keymap !== "object" || api.keymap === null) {
-    return false;
-  }
-
-  return "registerLayer" in api.keymap && typeof api.keymap.registerLayer === "function";
+  return "ui" in api && "lifecycle" in api;
 }
 
 const _typecheckTuiPlugin: TuiPlugin = tui as TuiPlugin;
@@ -278,32 +420,32 @@ function formatAccountIdDescription(accountId: string | undefined): string {
 
 async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: string): Promise<string> {
   const paths = getOpenCodeAuthPaths();
-  const [action, profileName] = rawArguments.trim().split(/\s+/, 2);
+  const [action, argument] = rawArguments.trim().split(/\s+/, 2);
 
   try {
     if (!action || action === "help") {
-      const message = "Usage: /openai-account save <name> | switch <name> | list | active | login";
+      const message = `Usage: /${FALLBACK_COMMAND_NAME} save <name> | switch <name> | list | active | login [browser|headless]`;
       await showServerToast(ctx, "info", message);
       return message;
     }
 
     if (action === "save") {
-      if (!profileName) {
-        throw new Error("Usage: /openai-account save <name>");
+      if (!argument) {
+        throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} save <name>`);
       }
 
-      const savedProfile = await saveActiveOpenAIProfile(paths, profileName);
+      const savedProfile = await saveActiveOpenAIProfile(paths, argument);
       const message = `Saved ${savedProfile.name}.`;
       await showServerToast(ctx, "success", message);
       return message;
     }
 
     if (action === "switch") {
-      if (!profileName) {
-        throw new Error("Usage: /openai-account switch <name>");
+      if (!argument) {
+        throw new Error(`Usage: /${FALLBACK_COMMAND_NAME} switch <name>`);
       }
 
-      const switchedProfile = await switchActiveOpenAIProfile(paths, profileName);
+      const switchedProfile = await switchActiveOpenAIProfile(paths, argument);
       const message = `Switched to ${switchedProfile.name}. ${RESTART_MESSAGE}`;
       await showServerToast(ctx, "success", message);
       return message;
@@ -325,7 +467,7 @@ async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: str
     }
 
     if (action === "login") {
-      return await startServerOpenAIBrowserLogin(ctx);
+      return await startServerOpenAILogin(ctx, argument);
     }
 
     throw new Error(`Unknown action: ${action}`);
@@ -336,12 +478,12 @@ async function handleServerCommand(ctx: Parameters<Plugin>[0], rawArguments: str
   }
 }
 
-async function startServerOpenAIBrowserLogin(ctx: Parameters<Plugin>[0]): Promise<string> {
+async function startServerOpenAILogin(ctx: Parameters<Plugin>[0], methodPreference: string | undefined): Promise<string> {
   const client = ctx.client as unknown as {
     provider: {
-      auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, Array<{ label: string }>>; error?: unknown }>;
+      auth(parameters?: { directory?: string }): Promise<{ data?: Record<string, OpenAIAuthMethod[]>; error?: unknown }>;
       oauth: {
-        authorize(parameters: { providerID: string; directory?: string; method: number }): Promise<{ data?: { url: string }; error?: unknown }>;
+        authorize(parameters: { providerID: string; directory?: string; method: number }): Promise<{ data?: OpenAIAuthAuthorization; error?: unknown }>;
       };
     };
   };
@@ -352,28 +494,49 @@ async function startServerOpenAIBrowserLogin(ctx: Parameters<Plugin>[0]): Promis
   }
 
   const openAIAuthMethods = authMethodsResult.data.openai ?? [];
-  const browserMethodIndex = openAIAuthMethods.findIndex((method) => method.label === OPENAI_BROWSER_LOGIN_METHOD_LABEL);
+  const methodIndex = findOpenAIAuthMethodIndex(openAIAuthMethods, methodPreference);
 
-  if (browserMethodIndex === -1) {
+  if (methodIndex === -1) {
     const availableMethods = openAIAuthMethods.map((method) => method.label).join(", ") || "none";
 
-    throw new Error(`OpenAI browser login method not found. Available: ${availableMethods}`);
+    throw new Error(`OpenAI login method not found. Available: ${availableMethods}`);
   }
 
   const authorizationResult = await client.provider.oauth.authorize({
     providerID: "openai",
     directory: ctx.directory,
-    method: browserMethodIndex,
+    method: methodIndex,
   });
 
   if (authorizationResult.error || !authorizationResult.data) {
     throw new Error("Unable to start OpenAI login");
   }
 
-  openPathOrUrl(authorizationResult.data.url);
-  const message = "Opened OpenAI login. After login completes, run /openai-account save personal.";
+  const shouldOpenLoginUrl = authorizationResult.data.method !== "code" && openAIAuthMethods[methodIndex]?.label !== OPENAI_HEADLESS_LOGIN_METHOD_LABEL;
+
+  if (shouldOpenLoginUrl) {
+    openPathOrUrl(authorizationResult.data.url);
+  }
+
+  const message = shouldOpenLoginUrl
+    ? `Opened OpenAI login. After login completes, run /${FALLBACK_COMMAND_NAME} save <name>.`
+    : `${authorizationResult.data.url} ${authorizationResult.data.instructions} Waiting for authorization. After login completes, restart opencode and run /${FALLBACK_COMMAND_NAME} save <name>.`;
   await showServerToast(ctx, "info", message);
   return message;
+}
+
+function findOpenAIAuthMethodIndex(openAIAuthMethods: OpenAIAuthMethod[], methodPreference: string | undefined): number {
+  if (!methodPreference || methodPreference === "browser") {
+    return openAIAuthMethods.findIndex((method) => method.label === OPENAI_BROWSER_LOGIN_METHOD_LABEL);
+  }
+
+  if (methodPreference === "headless") {
+    return openAIAuthMethods.findIndex((method) => method.label === OPENAI_HEADLESS_LOGIN_METHOD_LABEL);
+  }
+
+  const normalizedPreference = methodPreference.toLowerCase();
+
+  return openAIAuthMethods.findIndex((method) => method.label.toLowerCase() === normalizedPreference);
 }
 
 async function showServerToast(
