@@ -1,15 +1,15 @@
 {
 	"name": "opencode-openai-profiles",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "OpenCode TUI plugin for switching saved OpenAI ChatGPT OAuth profiles.",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/dylanvanh/opencode-openai-account-switcher.git"
+		"url": "git+https://github.com/dylanvanh/opencode-openai-profiles.git"
 	},
 	"bugs": {
-		"url": "https://github.com/dylanvanh/opencode-openai-account-switcher/issues"
+		"url": "https://github.com/dylanvanh/opencode-openai-profiles/issues"
 	},
-	"homepage": "https://github.com/dylanvanh/opencode-openai-account-switcher#readme",
+	"homepage": "https://github.com/dylanvanh/opencode-openai-profiles#readme",
 	"type": "module",
 	"main": "dist/server.js",
 	"types": "dist/server.d.ts",
