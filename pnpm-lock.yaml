@@ -524,8 +524,8 @@ packages:
     resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
     engines: {node: '>=14.0.0'}
 
-  toml@4.1.1:
-    resolution: {integrity: sha512-EBJnVBr3dTXdA89WVFoAIPUqkBjxPMwRqsfuo1r240tKFHXv3zgca4+NJib/h6TyvGF7vOawz0jGuryJCdNHrw==}
+  toml@4.3.0:
+    resolution: {integrity: sha512-lVb8X9BsPVuH0M4BKeS91tXAmJvCjQ5UIyAbQFaxkKGyUFK2RPkhwaFSQH8vbpl1d23eu/IBH+dwVMHWaq9A5A==}
     engines: {node: '>=20'}
 
   tslib@2.8.1:
@@ -872,7 +872,7 @@ snapshots:
       kubernetes-types: 1.30.0
       msgpackr: 1.11.12
       multipasta: 0.2.7
-      toml: 4.1.1
+      toml: 4.3.0
       uuid: 13.0.2
       yaml: 2.9.0
 
@@ -1045,7 +1045,7 @@ snapshots:
 
   tinyrainbow@3.1.0: {}
 
-  toml@4.1.1: {}
+  toml@4.3.0: {}
 
   tslib@2.8.1:
     optional: true
